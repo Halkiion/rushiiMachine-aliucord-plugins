@@ -5,7 +5,7 @@ aliucord {
 	changelog.set(
 		"""
 			# 1.0.7
-			* Several bug fixes fixing crashes and wrong audio clip playing
+			* Fix bugs regarding crashes and desync
 
 			# 1.0.6
 			* Fix crash on ogg files
