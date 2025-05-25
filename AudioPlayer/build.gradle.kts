@@ -1,4 +1,4 @@
-version = "1.0.7"
+version = "2.0.0"
 description = "Play audio attachments directly in chat."
 
 aliucord {
