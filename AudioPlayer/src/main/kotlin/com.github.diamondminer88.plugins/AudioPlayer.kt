@@ -78,11 +78,11 @@ class AudioPlayer : Plugin() {
     private fun stopCurrentPlayer() {
 
         playerBarUpdaters.values.forEach { it() }
-        try { globalCleanup?.invoke() } catch (_: Exception) {}
-        try { globalCurrentPlayer?.setOnCompletionListener(null) } catch (_: Exception) {}
-        try { globalCurrentPlayer?.setOnPreparedListener(null) } catch (_: Exception) {}
-        try { globalCurrentPlayer?.stop() } catch (_: Exception) {}
-        try { globalCurrentPlayer?.release() } catch (_: Exception) {}
+        globalCleanup?.invoke()
+        globalCurrentPlayer?.setOnCompletionListener(null)
+        globalCurrentPlayer?.setOnPreparedListener(null)
+        globalCurrentPlayer?.stop()
+        globalCurrentPlayer?.release()
 
         globalCurrentPlayer = null
         globalCleanup = null
@@ -91,33 +91,35 @@ class AudioPlayer : Plugin() {
         globalIsCompleted = false 
     }
 
-	fun requestAudioFocus(ctx: Context) {
-		audioManager = audioManager ?: ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-		val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-			.setAudioAttributes(
-				AudioAttributes.Builder()
-					.setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-					.setUsage(AudioAttributes.USAGE_MEDIA)
-					.build()
-			)
-			.setOnAudioFocusChangeListener { }
-			.build()
-		audioManager!!.requestAudioFocus(focusRequest)
-	}
+    fun requestAudioFocus(ctx: Context) {
+        audioManager = audioManager ?: ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .build()
+            )
+            .setOnAudioFocusChangeListener { }
+            .build()
+        audioManager!!.requestAudioFocus(focusRequest)
+    }
 
-    fun deleteOggCacheFiles(cacheDir: File, oggCacheMap: Map<String, File>) {
-        val oggFiles = cacheDir.listFiles { file ->
-            file.parentFile == cacheDir &&
-            file.name.matches(Regex("^audio_-?\\d+\\.ogg$"))
-        } ?: emptyArray()
-        val filesToDelete = oggFiles.filter { file -> !oggCacheMap.values.contains(file) }
-        for (file in filesToDelete) {
-            file.delete()
+    private fun getOggCacheDir(cacheDir: File): File {
+        val oggCacheDir = File(cacheDir, "ogg")
+        if (!oggCacheDir.exists()) oggCacheDir.mkdirs()
+        return oggCacheDir
+    }
+
+    fun deleteOggCacheFiles(cacheDir: File) {
+        val oggCacheDir = getOggCacheDir(cacheDir)
+        if (oggCacheDir.exists()) {
+            oggCacheDir.deleteRecursively()
         }
     }
 
     override fun start(context: Context) {
-        deleteOggCacheFiles(cacheDir = context.cacheDir, oggCacheMap = oggFileCache)
+        deleteOggCacheFiles(context.cacheDir)
 
         patcher.after<WidgetChatListAdapterItemAttachment>(
             "configureFileData",
@@ -129,20 +131,25 @@ class AudioPlayer : Plugin() {
             val card = root.findViewById<MaterialCardView>(attachmentCardId)
             val ctx = root.context
 
-            card.findViewById<MaterialCardView>(playerBarId)?.let { card.removeView(it) }
+            card.findViewById<MaterialCardView>(playerBarId)?.visibility = View.GONE
             val loadingBarId = playerBarId + 1
-            card.findViewById<ProgressBar>(loadingBarId)?.let { card.removeView(it) }
+            card.findViewById<ProgressBar>(loadingBarId)?.visibility = View.GONE
 
             if (!isAudioFile(messageAttachment.filename)) return@after
 
-            val loadingBar = ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal).apply {
-                id = loadingBarId
-                isIndeterminate = true
-                layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, 6.dp).apply {
-                    gravity = Gravity.BOTTOM
+            val existingLoadingBar = card.findViewById<ProgressBar>(loadingBarId)
+            if (existingLoadingBar != null) {
+                existingLoadingBar.visibility = View.VISIBLE
+            } else {
+                val loadingBar = ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal).apply {
+                    id = loadingBarId
+                    isIndeterminate = true
+                    layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, 6.dp).apply {
+                        gravity = Gravity.BOTTOM
+                    }
                 }
+                card.addView(loadingBar)
             }
-            card.addView(loadingBar)
 
             Utils.threadPool.execute {
                 val url = messageAttachment.url
@@ -165,31 +172,31 @@ class AudioPlayer : Plugin() {
                 }
 
                 Utils.mainThread.post {
-                    card.findViewById<ProgressBar>(loadingBarId)?.let { card.removeView(it) }
+                    card.findViewById<ProgressBar>(loadingBarId)?.visibility = View.GONE
 
-                    if (duration == -1L) {
-                        Toast.makeText(ctx, "Failed to load audio metadata.", Toast.LENGTH_SHORT).show()
-                        return@post
-                    }
-
-                    val playerCard = MaterialCardView(ctx).apply {
-                        id = playerBarId
-                        cardElevation = 4.dp.toFloat()
-                        layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-                            topMargin = 60.dp
-                            gravity = Gravity.BOTTOM
-                        }
-                        isClickable = false
-                        isFocusable = false
-                        foreground = null
-                        stateListAnimator = null
+                    val existingPlayerCard = card.findViewById<MaterialCardView>(playerBarId)
+                    val playerCard = if (existingPlayerCard != null) {
+                        existingPlayerCard.visibility = View.VISIBLE
+                        existingPlayerCard
+                    } else {
+                        MaterialCardView(ctx).apply {
+                            id = playerBarId
+                            cardElevation = 4.dp.toFloat()
+                            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
+                                topMargin = 60.dp
+                                gravity = Gravity.BOTTOM
+                            }
+                            isClickable = true
+                            isFocusable = false
+                            foreground = null
+                            stateListAnimator = null
+                        }.also { card.addView(it) }
                     }
 
                     val playerBar = LinearLayout(ctx, null, 0, R.i.UiKit_ViewGroup).apply {
                         orientation = LinearLayout.HORIZONTAL
                         setPadding(24, 24, 24, 24)
                         layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-                        setOnClickListener { }
 
                         var localTimer: Timer? = null
 
@@ -214,7 +221,6 @@ class AudioPlayer : Plugin() {
                         }
 
                         fun updateUiFromPlayer() {
-
                             if (globalPlayingUrl != url || globalCurrentPlayer == null) {
                                 setIdleState()
                                 return
@@ -236,7 +242,6 @@ class AudioPlayer : Plugin() {
                             localTimer = Timer()
                             localTimer!!.scheduleAtFixedRate(object : TimerTask() {
                                 override fun run() {
-
                                     if (globalPlayingUrl != url || globalCurrentPlayer == null) {
                                         cancelTimer()
                                         Utils.mainThread.post { setIdleState() }
@@ -339,9 +344,10 @@ class AudioPlayer : Plugin() {
                             Utils.threadPool.execute {
                                 var playUrl = url
                                 if (isOggFile) {
+                                    val oggCacheDir = getOggCacheDir(ctx.cacheDir)
                                     var file = oggFileCache[url]
                                     if (file == null || !file.exists()) {
-                                        file = File(ctx.cacheDir, "audio_${url.hashCode()}.ogg")
+                                        file = File(oggCacheDir, "audio_${url.hashCode()}.ogg")
                                         try {
                                             Http.simpleDownload(url, file)
                                             oggFileCache[url] = file
@@ -405,19 +411,17 @@ class AudioPlayer : Plugin() {
                         addView(sliderView)
                     }
 
+                    playerCard.removeAllViews()
                     playerCard.addView(playerBar)
-                    card.addView(playerCard)
                 }
             }
         }
 
         patcher.after<StoreMessages>("handleChannelSelected", Long::class.javaPrimitiveType!!) {
             stopCurrentPlayer()
-            deleteOggCacheFiles(cacheDir = context.cacheDir, oggCacheMap = oggFileCache)
         }
         patcher.after<AppActivity>("onCreate", Bundle::class.java) {
             stopCurrentPlayer()
-            deleteOggCacheFiles(cacheDir = context.cacheDir, oggCacheMap = oggFileCache)
         }
         patcher.after<AppActivity>("onPause") {
             stopCurrentPlayer()
@@ -427,6 +431,6 @@ class AudioPlayer : Plugin() {
     override fun stop(context: Context) {
         patcher.unpatchAll()
         stopCurrentPlayer()
-        deleteOggCacheFiles(cacheDir = context.cacheDir, oggCacheMap = oggFileCache)
+        deleteOggCacheFiles(context.cacheDir)
     }
 }

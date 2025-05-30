@@ -18,7 +18,7 @@ object OggMetadataFetcher {
     fun fetch(url: String): OggMetadata? {
         var sampleRate = -1
         var codec = ""
-        val head = fetchBytes(url, 0, 32767) ?: return null
+        val head = fetchBytes(url, 0, 8191) ?: return null
 
         // Opus
         for (i in 0 until head.size - 8) {
@@ -92,7 +92,7 @@ object OggMetadataFetcher {
     }
 
     fun fetchGranulePosition(fileUrl: String): Long {
-        val tailBytes = 65536
+        val tailBytes = 16384
         val tail = fetchLastBytes(fileUrl, tailBytes) ?: return -1
 
         var lastOggS = -1
