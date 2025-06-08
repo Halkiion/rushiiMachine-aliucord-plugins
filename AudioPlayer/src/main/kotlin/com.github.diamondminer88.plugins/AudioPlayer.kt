@@ -39,6 +39,7 @@ import android.media.AudioManager
 @AliucordPlugin
 class AudioPlayer : Plugin() {
     private val playerBarId = View.generateViewId()
+    private val loadingBarId = View.generateViewId()
     private val attachmentCardId = Utils.getResId("chat_list_item_attachment_card", "id")
     private val validFileExtensions = arrayOf(
         "webm", "mp3", "aac", "m4a", "wav", "flac", "wma", "opus", "ogg"
@@ -106,16 +107,14 @@ class AudioPlayer : Plugin() {
     }
 
     private fun getOggCacheDir(cacheDir: File): File {
-        val oggCacheDir = File(cacheDir, "ogg")
+        val oggCacheDir = File(cacheDir, "audio")
         if (!oggCacheDir.exists()) oggCacheDir.mkdirs()
         return oggCacheDir
     }
 
     fun deleteOggCacheFiles(cacheDir: File) {
         val oggCacheDir = getOggCacheDir(cacheDir)
-        if (oggCacheDir.exists()) {
-            oggCacheDir.deleteRecursively()
-        }
+        oggCacheDir.deleteRecursively()
     }
 
     override fun start(context: Context) {
@@ -132,7 +131,6 @@ class AudioPlayer : Plugin() {
             val ctx = root.context
 
             card.findViewById<MaterialCardView>(playerBarId)?.visibility = View.GONE
-            val loadingBarId = playerBarId + 1
             card.findViewById<ProgressBar>(loadingBarId)?.visibility = View.GONE
 
             if (!isAudioFile(messageAttachment.filename)) return@after
