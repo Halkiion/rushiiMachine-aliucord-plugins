@@ -354,7 +354,7 @@ class AudioPlayer : Plugin() {
                                         } catch (e: Exception) {
                                             Utils.mainThread.post {
                                                 buttonView?.isEnabled = true
-                                                Toast.makeText(ctx, "Failed to download Ogg file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(ctx, "Failed to download audio: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                                             }
                                             return@execute
                                         }
