@@ -2,10 +2,16 @@ package com.github.diamondminer88.plugins
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.*
 import android.widget.FrameLayout.LayoutParams.MATCH_PARENT
@@ -30,9 +36,6 @@ import com.lytefast.flexinput.R
 import java.io.File
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 
 @Suppress("unused")
 @SuppressLint("SetTextI18n")
@@ -92,19 +95,30 @@ class AudioPlayer : Plugin() {
         globalIsCompleted = false 
     }
 
-    fun requestAudioFocus(ctx: Context) {
-        audioManager = audioManager ?: ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .build()
-            )
-            .setOnAudioFocusChangeListener { }
-            .build()
-        audioManager!!.requestAudioFocus(focusRequest)
-    }
+	fun requestAudioFocus(ctx: Context) {
+	    if (Build.VERSION.SDK_INT >= 26) {
+	        audioManager = audioManager ?: ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+	        val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+	            .setAudioAttributes(
+	                AudioAttributes.Builder()
+	                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+	                    .setUsage(AudioAttributes.USAGE_MEDIA)
+	                    .build()
+	            )
+	            .setOnAudioFocusChangeListener { }
+	            .build()
+	        audioManager!!.requestAudioFocus(focusRequest)
+	    } else {
+	        val intent = Intent(Intent.ACTION_MEDIA_BUTTON)
+	        var keyEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_STOP)
+	        intent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent)
+	        ctx.sendOrderedBroadcast(intent, null)
+
+	        keyEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_STOP)
+	        intent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent)
+	        ctx.sendOrderedBroadcast(intent, null)
+	    }
+	}
 
     private fun getOggCacheDir(cacheDir: File): File {
         val oggCacheDir = File(cacheDir, "audio")
