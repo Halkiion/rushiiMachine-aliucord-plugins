@@ -165,9 +165,10 @@ class AudioPlayer : Plugin() {
 
             Utils.threadPool.execute {
                 val url = messageAttachment.url
-                val isOgg = messageAttachment.filename.lowercase(Locale.ROOT).endsWith(".ogg")
+                val isOggOrOpus = messageAttachment.filename.lowercase(Locale.ROOT).endsWith(".ogg") ||
+                    messageAttachment.filename.lowercase(Locale.ROOT).endsWith(".opus")
                 var duration: Long = durationCache[url] ?: run {
-                    val dur = if (isOgg) {
+                    val dur = if (isOggOrOpus) {
                         OggMetadataFetcher.fetch(url)?.duration?.times(1000)?.toLong() ?: 0L
                     } else {
                         try {
@@ -330,7 +331,8 @@ class AudioPlayer : Plugin() {
                         buttonView?.setOnClickListener {
                             requestAudioFocus(ctx)
 
-                            val isOggFile = messageAttachment.filename.lowercase(Locale.ROOT).endsWith(".ogg")
+                            val isOggOrOpusFile = messageAttachment.filename.lowercase(Locale.ROOT).endsWith(".ogg") ||
+                                messageAttachment.filename.lowercase(Locale.ROOT).endsWith(".opus")
                             val url = messageAttachment.url
 
                             globalIsCompleted = false
@@ -355,7 +357,7 @@ class AudioPlayer : Plugin() {
                             buttonView?.isEnabled = false
                             Utils.threadPool.execute {
                                 var playUrl = url
-                                if (isOggFile) {
+                                if (isOggOrOpusFile) {
                                     val oggCacheDir = getOggCacheDir(ctx.cacheDir)
                                     var file = oggFileCache[url]
                                     if (file == null || !file.exists()) {
