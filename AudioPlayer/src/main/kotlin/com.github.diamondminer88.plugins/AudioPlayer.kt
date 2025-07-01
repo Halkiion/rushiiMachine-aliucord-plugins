@@ -58,7 +58,8 @@ class AudioPlayer : Plugin() {
 
     private var globalIsCompleted: Boolean = false
 
-    private val playerBarUpdaters = Collections.synchronizedMap(mutableMapOf<String, (() -> Unit)>())
+    private var currentActiveBarReset: (() -> Unit)? = null
+    private var previousActiveBarReset: (() -> Unit)? = null
 
     private val durationCache = ConcurrentHashMap<String, Long>()
     private val oggFileCache = ConcurrentHashMap<String, File>()
@@ -80,8 +81,11 @@ class AudioPlayer : Plugin() {
     }
 
     private fun stopCurrentPlayer() {
+        currentActiveBarReset?.invoke()
+        previousActiveBarReset?.invoke()
+        currentActiveBarReset = null
+        previousActiveBarReset = null
 
-        playerBarUpdaters.values.forEach { it() }
         globalCleanup?.invoke()
         globalCurrentPlayer?.setOnCompletionListener(null)
         globalCurrentPlayer?.setOnPreparedListener(null)
@@ -95,30 +99,30 @@ class AudioPlayer : Plugin() {
         globalIsCompleted = false 
     }
 
-	fun requestAudioFocus(ctx: Context) {
-	    if (Build.VERSION.SDK_INT >= 26) {
-	        audioManager = audioManager ?: ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-	        val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-	            .setAudioAttributes(
-	                AudioAttributes.Builder()
-	                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-	                    .setUsage(AudioAttributes.USAGE_MEDIA)
-	                    .build()
-	            )
-	            .setOnAudioFocusChangeListener { }
-	            .build()
-	        audioManager!!.requestAudioFocus(focusRequest)
-	    } else {
-	        val intent = Intent(Intent.ACTION_MEDIA_BUTTON)
-	        var keyEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_STOP)
-	        intent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent)
-	        ctx.sendOrderedBroadcast(intent, null)
+    fun requestAudioFocus(ctx: Context) {
+        if (Build.VERSION.SDK_INT >= 26) {
+            audioManager = audioManager ?: ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener { }
+                .build()
+            audioManager!!.requestAudioFocus(focusRequest)
+        } else {
+            val intent = Intent(Intent.ACTION_MEDIA_BUTTON)
+            var keyEvent = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_STOP)
+            intent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent)
+            ctx.sendOrderedBroadcast(intent, null)
 
-	        keyEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_STOP)
-	        intent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent)
-	        ctx.sendOrderedBroadcast(intent, null)
-	    }
-	}
+            keyEvent = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_STOP)
+            intent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent)
+            ctx.sendOrderedBroadcast(intent, null)
+        }
+    }
 
     private fun getOggCacheDir(cacheDir: File): File {
         val oggCacheDir = File(cacheDir, "audio")
@@ -238,7 +242,13 @@ class AudioPlayer : Plugin() {
                                 setIdleState()
                                 return
                             }
-                            val pos = globalCurrentPlayer?.currentPosition ?: 0
+                            val pos = try {
+                                globalCurrentPlayer?.currentPosition ?: 0
+                            } catch (e: IllegalStateException) {
+                                setIdleState()
+                                cancelTimer()
+                                return
+                            }
                             sliderView?.progress = if (duration > 0) (500 * pos / duration).toInt() else 0
                             progressView?.text = "${msToTime(pos.toLong())} / ${msToTime(duration)}"
                             buttonView?.background = when {
@@ -323,8 +333,16 @@ class AudioPlayer : Plugin() {
                             }
                         )
 
-                        playerBarUpdaters[url] = {
+                        val resetThisBar = {
                             cancelTimer()
+                            setIdleState()
+                        }
+
+                        if (globalPlayingUrl == url && globalCurrentPlayer != null) {
+                            updateUiFromPlayer()
+                            startTimer()
+                            currentActiveBarReset = resetThisBar
+                        } else {
                             setIdleState()
                         }
 
@@ -338,7 +356,6 @@ class AudioPlayer : Plugin() {
                             globalIsCompleted = false
 
                             if (globalPlayingUrl == url && globalCurrentPlayer != null) {
-
                                 if (globalCurrentPlayer!!.isPlaying) {
                                     globalCurrentPlayer!!.pause()
                                     globalIsPlaying = false
@@ -351,6 +368,10 @@ class AudioPlayer : Plugin() {
                                 restoreUiToGlobalState()
                                 return@setOnClickListener
                             }
+
+                            previousActiveBarReset?.invoke()
+                            previousActiveBarReset = currentActiveBarReset
+                            currentActiveBarReset = resetThisBar
 
                             stopCurrentPlayer() 
 
@@ -419,7 +440,6 @@ class AudioPlayer : Plugin() {
                             }
                         }
 
-                        restoreUiToGlobalState()
                         addView(buttonView)
                         addView(progressView)
                         addView(sliderView)
